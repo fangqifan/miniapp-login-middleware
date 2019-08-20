@@ -1,6 +1,6 @@
 {
   "name": "miniapp-login-middleware",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "description": "miniapp login middleware for request pipeline.",
   "main": "dist/index.js",
   "scripts": {
@@ -24,6 +24,7 @@
   ],
   "author": "fangqifan",
   "license": "MIT",
+  "miniprogram": "dist",
   "repository": {
     "type": "git",
     "url": "git@github.com:fangqifan/miniapp-login-middleware.git"
@@ -54,8 +55,8 @@
   "dependencies": {
     "just-clone": "^3.1.0",
     "just-extend": "^3.0.0",
-    "miniapp-middleware-contracts": "0.1.1",
+    "miniapp-middleware-contracts": "0.2.0",
     "request-middleware-pipeline": "^0.1.0",
-    "miniapp-token-based-login": "^0.1.0"
+    "miniapp-token-based-login": "^0.1.4"
   }
 }

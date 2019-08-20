@@ -2,8 +2,7 @@ import clone from "just-clone";
 import extend from "just-extend";
 import { LoginModule, LoginStatusEnum } from 'miniapp-token-based-login'
 import { Middleware } from 'request-middleware-pipeline';
-import WechatContextNames from 'miniapp-middleware-contracts';
-
+import Contracts from 'miniapp-middleware-contracts';
 
 const defaultOptions = {
     attachRequestOptions: (requstOptions, loginToken) => {
@@ -12,11 +11,11 @@ const defaultOptions = {
             requstOptions.header['Authorization'] = 'Bearer ' + loginToken;
         }
     },
-    maxRetryCount: 3
+    maxRetryCount: 3,
+    loginModule: new LoginModule()
 };
 
 const privateNames = {
-    loginModule: Symbol('loginModule'),
     options: Symbol('options'),
     retryCount: Symbol('retryCount'),
 };
@@ -29,12 +28,11 @@ function recoveryContextData(contextData, newData) {
     extend(true, contextData, newData);
 }
 
-export default class WechatLoginMiddleware extends Middleware {
+export default class extends Middleware {
     constructor(nextMiddleware, options) {
         super(nextMiddleware);
 
-        this[privateNames.options] = extend(true, {}, defaultOptions, options);
-        this[privateNames.loginModule] = this[privateNames.options].loginModule || new LoginModule();
+        this[privateNames.options] = extend({}, defaultOptions, options);
         this[privateNames.retryCount] = 0;
     }
 
@@ -42,16 +40,16 @@ export default class WechatLoginMiddleware extends Middleware {
         //缓存context data 用于登录重试
         let cacheData = clone(middlewareContext.data);
         // 读取本地login token 附加在request上
-        const requestOptions = middlewareContext.data[WechatContextNames.WxRequestOptions] = middlewareContext.data[WechatContextNames.WxRequestOptions] || {};
-        const loginToken = this[privateNames.loginModule].loginToken;
+        const requestOptions = middlewareContext.data[Contracts.WxRequestOptions] = middlewareContext.data[Contracts.WxRequestOptions] || {};
+        const loginToken = this[privateNames.options].loginModule.loginToken;
 
         this[privateNames.options].attachRequestOptions(requestOptions, loginToken);
 
         await this.next(middlewareContext);
 
-        const response = middlewareContext.data[WechatContextNames.WxResponse] = middlewareContext.data[WechatContextNames.WxResponse] || {};
+        const response = middlewareContext.data[Contracts.WxResponse] = middlewareContext.data[Contracts.WxResponse] || {};
         if (response.statusCode === 401) {
-            let currentLoginStatus = this[privateNames.loginModule].status;
+            let currentLoginStatus = this[privateNames.options].loginModule.status;
             //登陆失败的将不再尝试登陆
             if (currentLoginStatus.status === LoginStatusEnum.LoggedInFailed) {
                 return;
@@ -59,13 +57,14 @@ export default class WechatLoginMiddleware extends Middleware {
             if (currentLoginStatus.status === LoginStatusEnum.LoggedIn) {
                 currentLoginStatus.changeStatus(LoginStatusEnum.NotLoggedIn);
             }
-            await this[privateNames.loginModule].login();
+            await this[privateNames.options].loginModule.login();
             //如果登录成功 则重置context data并重试
             if (currentLoginStatus.status === LoginStatusEnum.LoggedIn) {
-                if (this[privateNames.options].maxRetryCount > ++this[privateNames.retryCount]) {
-                    currentLoginStatus.changeStatus(LoginStatusEnum.NotLoggedIn);
+                if (this[privateNames.retryCount] > this[privateNames.options].maxRetryCount) {
+                    currentLoginStatus.changeStatus(LoginStatusEnum.LoggedInFailed);
                     return;
                 }
+                this[privateNames.retryCount]++;
                 recoveryContextData(middlewareContext.data, cacheData);
                 await this.invoke(middlewareContext);
             }
@@ -73,6 +72,6 @@ export default class WechatLoginMiddleware extends Middleware {
     }
 
     config(options) {
-        this[privateNames.options] = extend(true, this[privateNames.options], options);
+        this[privateNames.options] = extend(this[privateNames.options], options);
     }
 }
